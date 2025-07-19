@@ -1,0 +1,36 @@
+# Python cache and environment
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.log
+
+# Virtual environment
+venv/
+env/
+.aienv/
+.aienv
+.aienv*/
+
+# GROBID output
+output/
+*.tei.xml
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# PDFs or heavy test files
+papers/*.pdf
+
+# VSCode and IDE configs
+.vscode/
+.idea/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# .env files or secrets
+.env
+.env.local
