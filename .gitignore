@@ -1,36 +1,127 @@
-# Python cache and environment
+# Python cache and bytecode
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
 *.so
-*.log
+*.egg
+*.egg-info/
 
-# Virtual environment
+# Virtual environments - EXCLUDE ALL VIRTUAL ENVIRONMENTS
 venv/
 env/
+majorenv/
+.venv/
+.env/
+ENV/
+env.bak/
+venv.bak/
 .aienv/
-.aienv
 .aienv*/
 
-# GROBID output
+# Python environment configuration
+pyvenv.cfg
+
+# GROBID and processing outputs
 output/
+outputs/
 *.tei.xml
+*_408.txt
 
-# OS-specific
-.DS_Store
-Thumbs.db
-
-# PDFs or heavy test files
+# PDF files (can be large, add selectively if needed)
 papers/*.pdf
+*.pdf
 
-# VSCode and IDE configs
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+logs/
+temp/
+
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# IDE and editor files
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
 
-# Jupyter Notebook checkpoints
+# Jupyter Notebook
 .ipynb_checkpoints/
+*.ipynb
 
-# .env files or secrets
+# Environment variables and secrets
 .env
 .env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Package manager files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Model files and datasets (can be large)
+*.bin
+*.pkl
+*.pickle
+*.h5
+*.hdf5
+models/
+datasets/
+data/
+
+# Temporary test files
+test_*.xml
+direct_test_*.xml
