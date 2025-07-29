@@ -46,6 +46,7 @@ class HybridSummaryGenerator:
         # Initialize components
         self.grobid_processor = None
         self.bart_summarizer = None
+        self.longformer_summarizer = None
         self.processing_stats = {
             "grobid_success": 0,
             "grobid_timeout": 0,
@@ -59,6 +60,7 @@ class HybridSummaryGenerator:
         """Initialize all available components"""
         
         # Initialize GROBID processor
+
         if GROBID_AVAILABLE:
             try:
                 self.grobid_processor = OptimizedGROBIDProcessor()
@@ -76,16 +78,26 @@ class HybridSummaryGenerator:
         # Initialize AI models
         if TRANSFORMERS_AVAILABLE:
             try:
-                print("🤖 Loading BART model for AI summaries...")
+                print("🤖 Loading BART model for quick summaries...")
                 self.bart_summarizer = pipeline(
                     "summarization", 
                     model="facebook/bart-large-cnn",
                     device=-1
                 )
                 print("✅ BART model loaded successfully")
+                
+                print("🧠 Loading Longformer model for deep summaries...")
+                self.longformer_summarizer = pipeline(
+                    "summarization",
+                    model="allenai/led-large-16384-arxiv",  # Longformer for long documents
+                    device=-1
+                )
+                print("✅ Longformer model loaded successfully")
+                
             except Exception as e:
-                print(f"❌ BART model loading failed: {e}")
+                print(f"❌ AI model loading failed: {e}")
                 self.bart_summarizer = None
+                self.longformer_summarizer = None
         else:
             print("❌ Transformers not available")
     
@@ -215,14 +227,14 @@ class HybridSummaryGenerator:
     
     def generate_ai_summary(self, paper_data: Dict[str, Any]) -> str:
         """
-        Generate AI summary using BART
+        Generate quick AI summary using BART
         """
         if not self.bart_summarizer:
             # Fallback to simple summary
             if paper_data.get("abstract"):
                 return f"📄 Summary: {paper_data['abstract'][:200]}..."
             return "❌ No summary available"
-        
+
         try:
             # Use abstract if available, otherwise use first section
             input_text = ""
@@ -246,7 +258,7 @@ class HybridSummaryGenerator:
                 do_sample=False
             )
             
-            return f"🤖 AI Summary: {result[0]['summary_text']}"
+            return f"🤖 Quick Summary: {result[0]['summary_text']}"
             
         except Exception as e:
             print(f"❌ AI summarization failed: {e}")
@@ -255,7 +267,82 @@ class HybridSummaryGenerator:
                 sentences = paper_data["abstract"].split(". ")
                 return f"📄 Summary: {sentences[0]}." if sentences else "❌ Summary unavailable"
             return "❌ Summary generation failed"
-    
+
+    def generate_deep_summary(self, paper_data: Dict[str, Any]) -> str:
+        """
+        Generate comprehensive 2-3 paragraph summary using Longformer
+        """
+        if not self.longformer_summarizer:
+            # Fallback to extended BART summary
+            if self.bart_summarizer and paper_data.get("sections"):
+                try:
+                    # Use more content for fallback
+                    sections = paper_data.get("sections", {})
+                    combined_text = ""
+                    
+                    # Combine all sections up to 2000 chars
+                    for section_name, content in sections.items():
+                        if len(combined_text) < 2000:
+                            combined_text += f"{content} "
+                    
+                    combined_text = clean_text_comprehensive(combined_text[:2000])
+                    
+                    result = self.bart_summarizer(
+                        combined_text,
+                        max_length=200,
+                        min_length=100,
+                        do_sample=False
+                    )
+                    
+                    return f"📖 Extended Summary: {result[0]['summary_text']}"
+                    
+                except Exception as e:
+                    print(f"❌ Extended summary failed: {e}")
+            
+            return "❌ Deep summary not available"
+
+        try:
+            # Prepare comprehensive input text for Longformer
+            sections = paper_data.get("sections", {})
+            if not sections:
+                return "❌ No content available for deep summary"
+            
+            # Build comprehensive text from all sections
+            comprehensive_text = ""
+            
+            # Add abstract if available
+            if paper_data.get("abstract"):
+                comprehensive_text += f"Abstract: {paper_data['abstract']}\n\n"
+            
+            # Add all sections with context
+            for section_name, content in sections.items():
+                if section_name.lower() != "references":  # Skip references
+                    comprehensive_text += f"{section_name}: {content}\n\n"
+            
+            # Limit to Longformer's capacity (approximately 16k tokens = ~64k chars)
+            comprehensive_text = comprehensive_text[:60000]
+            comprehensive_text = clean_text_comprehensive(comprehensive_text)
+            
+            if len(comprehensive_text) < 200:
+                return "❌ Insufficient content for deep summary"
+            
+            print("🧠 Generating comprehensive summary with Longformer...")
+            
+            # Generate comprehensive summary (2-3 paragraphs)
+            result = self.longformer_summarizer(
+                comprehensive_text,
+                max_length=400,  # ~2-3 paragraphs
+                min_length=200,
+                do_sample=False
+            )
+            
+            return f"🧠 Deep Analysis: {result[0]['summary_text']}"
+            
+        except Exception as e:
+            print(f"❌ Deep summary generation failed: {e}")
+            # Fallback to extended BART summary
+            return "❌ Deep summary failed"
+
     def process_single_paper(self, pdf_path: str) -> Dict[str, Any]:
         """
         Process a single PDF with hybrid approach
@@ -298,7 +385,7 @@ class HybridSummaryGenerator:
             }
         
         # Generate summaries
-        print("🤖 Generating AI summaries...")
+        print("🤖 Generating multi-level AI summaries...")
         
         summaries = {
             "paper_id": pdf_name.replace('.pdf', ''),
@@ -306,10 +393,12 @@ class HybridSummaryGenerator:
             "authors": paper_data.get("authors", []),
             "processing_method": processing_method,
             "quick_summary": self.generate_ai_summary(paper_data),
+            "deep_summary": self.generate_deep_summary(paper_data),
             "sections_found": list(paper_data.get("sections", {}).keys()),
             "original_abstract": paper_data.get("abstract", ""),
             "extraction_stats": paper_data.get("processing_stats", {}),
-            "ai_enhanced": self.bart_summarizer is not None
+            "ai_enhanced": self.bart_summarizer is not None,
+            "deep_analysis_available": self.longformer_summarizer is not None
         }
         
         # Save results
@@ -390,7 +479,9 @@ class HybridSummaryGenerator:
 
 🤖 AI ENHANCEMENT:
   • BART Model Available: {'✅ Yes' if self.bart_summarizer else '❌ No'}
-  • AI-Enhanced Summaries: {sum(1 for s in successful if s.get('ai_enhanced', False))}
+  • Longformer Model Available: {'✅ Yes' if self.longformer_summarizer else '❌ No'}
+  • Quick Summaries Generated: {sum(1 for s in successful if s.get('ai_enhanced', False))}
+  • Deep Analyses Generated: {sum(1 for s in successful if s.get('deep_analysis_available', False))}
 
 📂 OUTPUT DIRECTORY: {self.output_dir}
 
