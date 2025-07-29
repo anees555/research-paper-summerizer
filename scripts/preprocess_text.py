@@ -472,6 +472,152 @@ def test_with_real_data():
         print("Make sure GROBID is running and parse_pdf.py works")
 
 
+def clean_text_comprehensive(text: str) -> str:
+    """
+    Comprehensive text cleaning for research papers
+    """
+    if not text:
+        return ""
+    
+    # Remove extra whitespace and normalize
+    text = re.sub(r'\s+', ' ', text.strip())
+    
+    # Remove common PDF artifacts
+    text = re.sub(r'[0-9]+\s*$', '', text)  # Page numbers at end
+    text = re.sub(r'^[0-9]+\s*', '', text)  # Page numbers at start
+    text = re.sub(r'\f', ' ', text)  # Form feed characters
+    text = re.sub(r'•', '-', text)  # Bullet points
+    
+    # Fix common spacing issues
+    text = re.sub(r'\s+([.,:;!?])', r'\1', text)  # Space before punctuation
+    text = re.sub(r'([.,:;!?])\s*([a-zA-Z])', r'\1 \2', text)  # Space after punctuation
+    
+    # Remove excessive punctuation
+    text = re.sub(r'[.]{3,}', '...', text)  # Multiple dots
+    text = re.sub(r'[-]{2,}', '--', text)  # Multiple dashes
+    
+    # Clean up citations and references
+    text = re.sub(r'\[[\d,\s-]+\]', '', text)  # Remove citation numbers [1,2,3]
+    text = re.sub(r'\([\d,\s-]+\)', '', text)  # Remove citation numbers (1,2,3)
+    
+    # Remove URLs and email addresses
+    text = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', text)
+    text = re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', '', text)
+    
+    # Final cleanup
+    text = re.sub(r'\s+', ' ', text.strip())
+    
+    return text
+
+def chunk_text_for_models(text: str, model_type: str) -> List[Dict[str, any]]:
+    """
+    Chunk text based on model token limits
+    """
+    # Approximate token limits (conservative estimates)
+    max_tokens = {
+        "bart": 900,      # BART can handle ~1024 tokens
+        "longformer": 3500,  # Longformer can handle 4096 tokens
+        "bert": 450       # BERT can handle 512 tokens
+    }
+    
+    limit = max_tokens.get(model_type.lower(), 500)
+    
+    # Rough estimation: 1 token ≈ 4 characters for English text
+    char_limit = limit * 4
+    
+    chunks = []
+    
+    if len(text) <= char_limit:
+        chunks.append({
+            "text": text,
+            "chunk_id": 0,
+            "tokens_estimate": len(text) // 4
+        })
+        return chunks
+    
+    # Split by sentences first
+    sentences = split_into_sentences(text)
+    
+    current_chunk = ""
+    chunk_id = 0
+    
+    for sentence in sentences:
+        # If adding this sentence would exceed limit
+        if len(current_chunk) + len(sentence) > char_limit:
+            if current_chunk:  # Save current chunk
+                chunks.append({
+                    "text": current_chunk.strip(),
+                    "chunk_id": chunk_id,
+                    "tokens_estimate": len(current_chunk) // 4
+                })
+                chunk_id += 1
+                current_chunk = sentence
+            else:  # Sentence itself is too long, force split
+                long_chunks = force_split_text(sentence, char_limit)
+                for long_chunk in long_chunks:
+                    chunks.append({
+                        "text": long_chunk,
+                        "chunk_id": chunk_id,
+                        "tokens_estimate": len(long_chunk) // 4
+                    })
+                    chunk_id += 1
+        else:
+            current_chunk += (" " if current_chunk else "") + sentence
+    
+    # Add final chunk
+    if current_chunk:
+        chunks.append({
+            "text": current_chunk.strip(),
+            "chunk_id": chunk_id,
+            "tokens_estimate": len(current_chunk) // 4
+        })
+    
+    return chunks
+
+def split_into_sentences(text: str) -> List[str]:
+    """
+    Split text into sentences using simple rules
+    """
+    # Handle common abbreviations that shouldn't end sentences
+    abbrevs = ['Dr.', 'Prof.', 'Mr.', 'Mrs.', 'Ms.', 'Ph.D.', 'M.D.', 'B.S.', 'M.S.', 
+               'i.e.', 'e.g.', 'et al.', 'etc.', 'vs.', 'Fig.', 'Table']
+    
+    for abbrev in abbrevs:
+        text = text.replace(abbrev, abbrev.replace('.', '<DOT>'))
+    
+    # Split on sentence ending punctuation
+    sentences = re.split(r'[.!?]+\s+', text)
+    
+    # Restore dots in abbreviations
+    sentences = [s.replace('<DOT>', '.') for s in sentences]
+    
+    # Filter out empty sentences and very short ones
+    sentences = [s.strip() for s in sentences if len(s.strip()) > 10]
+    
+    return sentences
+
+def force_split_text(text: str, char_limit: int) -> List[str]:
+    """
+    Force split text that's too long even for one chunk
+    """
+    chunks = []
+    
+    while len(text) > char_limit:
+        # Find last space before limit
+        split_point = text.rfind(' ', 0, char_limit)
+        
+        if split_point == -1:  # No space found, force split at limit
+            split_point = char_limit
+        
+        chunks.append(text[:split_point])
+        text = text[split_point:].lstrip()
+    
+    if text:  # Add remaining text
+        chunks.append(text)
+    
+    return chunks
+
+
 if __name__ == "__main__":
     # Run tests
     print("Step 1: Basic cleaning test")
